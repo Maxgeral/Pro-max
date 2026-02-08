@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Roleta PRO (Sem Seta) + Placar</title>
+
+<style>
+:root{
+  --neon:#ff00cc;
+  --cyan:#00ffff;
+}
+
+*{box-sizing:border-box}
+
+body{
+  margin:0;
+  min-height:100vh;
+  background:radial-gradient(circle at top,#3a0077,#120022);
+  color:#fff;
+  font-family:Arial,Helvetica,sans-serif;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  padding:12px;
+}
+
+h1{
+  font-size:2.5rem;
+  text-shadow:0 0 25px var(--neon);
+  margin:10px 0;
+}
+
+.panel{
+  width:100%;
+  max-width:520px;
+  background:rgba(0,0,0,.55);
+  border:2px solid var(--neon);
+  border-radius:18px;
+  padding:14px;
+  box-shadow:0 0 25px var(--neon);
+  margin-bottom:12px;
+}
+
+textarea{
+  width:100%;
+  height:140px;
+  background:#190030;
+  color:white;
+  border:2px solid #ff66cc;
+  border-radius:12px;
+  padding:10px;
+  font-size:1rem;
+}
+
+button{
+  margin-top:10px;
+  width:100%;
+  padding:14px;
+  font-size:1.3rem;
+  font-weight:bold;
+  border:none;
+  border-radius:40px;
+  cursor:pointer;
+  background:linear-gradient(#ff00cc,#cc0099);
+  color:white;
+  box-shadow:0 0 18px var(--neon);
+  transition:.25s;
+}
+
+button:hover{transform:scale(1.05)}
+button:disabled{opacity:.4;cursor:not-allowed}
+
+.wheel-wrap{
+  width:360px;
+  height:360px;
+  margin:20px auto;
+}
+
+#wheel{
+  width:100%;
+  height:100%;
+  border-radius:50%;
+  border:12px solid var(--neon);
+  box-shadow:0 0 40px var(--neon), inset 0 0 30px #000;
+}
+
+#result{
+  font-size:2rem;
+  min-height:70px;
+  text-align:center;
+  text-shadow:0 0 18px var(--cyan);
+}
+
+#score{
+  font-size:1.3rem;
+  margin:16px 0;
+  padding:12px;
+  background:rgba(0,0,0,0.4);
+  border-radius:12px;
+  border:1px solid var(--cyan);
+  width:100%;
+  max-width:520px;
+  text-align:center;
+}
+
+#score b{
+  color:var(--cyan);
+  text-shadow:0 0 10px var(--cyan);
+}
+
+#history ul{
+  padding-left:18px;
+  margin:8px 0;
+}
+
+@media(max-width:480px){
+  .wheel-wrap{width:320px;height:320px}
+  h1{font-size:2.2rem}
+}
+</style>
+</head>
+
+<body>
+
+<h1>🎯 ROLETA PRO</h1>
+
+<div class="panel">
+  <textarea id="names"></textarea>
+  <button id="update">Atualizar nomes</button>
+</div>
+
+<div class="wheel-wrap">
+  <canvas id="wheel" width="360" height="360"></canvas>
+</div>
+
+<button id="spin">GIRAR 🔥</button>
+
+<div id="result">Pronto para girar 🎲</div>
+
+<div class="panel" id="history">
+  <b>🏆 Histórico (eliminação):</b>
+  <ul id="list"></ul>
+  
+  <div id="score">
+    <b>PLACAR ATUAL</b><br>
+    <div id="score-content">Ainda sem vencedores...</div>
+  </div>
+
+  <button id="reset">Resetar roleta</button>
+  <button id="reset-score" style="background:linear-gradient(#444,#222); margin-top:8px;">Zerar placar</button>
+</div>
+
+<audio id="spinSound" src="https://assets.mixkit.co/sfx/preview/mixkit-slot-machine-wheel-1932.mp3"></audio>
+<audio id="winSound" src="https://assets.mixkit.co/sfx/preview/mixkit-winning-chimes-2015.mp3"></audio>
+
+<script>
+const canvas = document.getElementById("wheel");
+const ctx = canvas.getContext("2d");
+
+let base = [
+  "arthur","atn7x_P","alezin","max_geral192","alison"
+];
+
+let pool = [...base];
+let score = {}; // ← placar
+let angle = 0;
+let spinning = false;
+
+const colors = ["#ff3366","#33ffcc","#ffcc33","#9933ff","#33ff99","#ff6633"];
+
+function updateScoreDisplay(){
+  if(Object.keys(score).length === 0){
+    document.getElementById("score-content").innerHTML = "Ainda sem vencedores...";
+    return;
+  }
+  
+  let lines = [];
+  const sorted = Object.entries(score).sort((a,b) => b[1] - a[1]);
+  
+  for(let [name, points] of sorted){
+    lines.push(`${name} → ${points} ${points === 1 ? 'vitória' : 'vitórias'}`);
+  }
+  
+  document.getElementById("score-content").innerHTML = lines.join("<br>");
+}
+
+function draw(){
+  const arc = 2*Math.PI / pool.length;
+  ctx.clearRect(0,0,360,360);
+
+  if(pool.length === 0){
+    ctx.fillStyle = "rgba(255,255,255,0.1)";
+    ctx.fillRect(0,0,360,360);
+    ctx.font = "bold 28px Arial";
+    ctx.fillStyle = "#ff3366";
+    ctx.textAlign = "center";
+    ctx.fillText("FIM", 180, 190);
+    return;
+  }
+
+  pool.forEach((name,i)=>{
+    const a = angle + i*arc;
+
+    ctx.beginPath();
+    ctx.moveTo(180,180);
+    ctx.fillStyle = colors[i % colors.length];
+    ctx.arc(180,180,170,a,a+arc);
+    ctx.fill();
+
+    ctx.save();
+    ctx.translate(180,180);
+    ctx.rotate(a + arc/2);
+    ctx.textAlign="right";
+    ctx.textBaseline="middle";
+    ctx.font="bold 16px Arial";
+    ctx.fillStyle="#fff";
+    ctx.fillText(name.toUpperCase(),150,0);
+    ctx.restore();
+  });
+}
+
+function spin(){
+  if(spinning || pool.length === 0) return;
+  spinning = true;
+  lock(true);
+
+  document.getElementById("spinSound").play();
+
+  const target = angle + Math.PI*10 + Math.random()*Math.PI*2;
+  const start = performance.now();
+  const dur = 6500;
+
+  function anim(t){
+    let p = Math.min((t-start)/dur,1);
+    p = 1 - Math.pow(1-p,4);
+    angle = target * p;
+    draw();
+
+    if(p < 1){
+      requestAnimationFrame(anim);
+    } else {
+      finish();
+    }
+  }
+  requestAnimationFrame(anim);
+}
+
+function finish(){
+  spinning = false;
+  document.getElementById("spinSound").pause();
+  document.getElementById("spinSound").currentTime = 0;
+  document.getElementById("winSound").play();
+
+  const arc = 2*Math.PI / pool.length;
+  const adjusted = (2*Math.PI - (angle % (2*Math.PI)) + Math.PI/2) % (2*Math.PI);
+  const index = Math.floor(adjusted / arc) % pool.length;
+  const winner = pool[index];
+
+  // Registrar vitória no placar
+  score[winner] = (score[winner] || 0) + 1;
+
+  document.getElementById("result").innerHTML = `🏆 <b>${winner}</b>`;
+  updateScoreDisplay();
+
+  // Destaque da fatia vencedora
+  ctx.save();
+  ctx.strokeStyle = "#00ffff";
+  ctx.lineWidth = 8;
+  ctx.shadowColor = "#00ffff";
+  ctx.shadowBlur = 20;
+  ctx.beginPath();
+  ctx.arc(180,180,170, angle + index*arc, angle + (index+1)*arc);
+  ctx.stroke();
+  ctx.restore();
+
+  document.getElementById("list").innerHTML += `<li>${winner}</li>`;
+  pool.splice(index,1);
+
+  lock(false);
+  draw();
+}
+
+function lock(v){
+  document.getElementById("spin").disabled = v;
+  document.getElementById("update").disabled = v;
+  document.getElementById("names").disabled = v;
+}
+
+document.getElementById("update").onclick = ()=>{
+  const t = document.getElementById("names").value.trim();
+  base = t.split("\n").map(n=>n.trim()).filter(Boolean);
+  pool = [...base];
+  
+  // Mantém o placar, só limpa histórico de eliminação
+  document.getElementById("list").innerHTML = "";
+  document.getElementById("result").textContent = "Atualizado ✨";
+  draw();
+};
+
+document.getElementById("reset").onclick = ()=>{
+  pool = [...base];
+  document.getElementById("list").innerHTML = "";
+  document.getElementById("result").textContent = "Resetado 🔄";
+  draw();
+};
+
+document.getElementById("reset-score").onclick = ()=>{
+  if(!confirm("Zerar TODAS as vitórias do placar?")) return;
+  score = {};
+  updateScoreDisplay();
+  document.getElementById("result").textContent = "Placar zerado 🗑️";
+};
+
+document.getElementById("spin").onclick = spin;
+document.getElementById("names").value = base.join("\n");
+
+// Inicializa
+draw();
+updateScoreDisplay();
+</script>
+
+</body>
+</html>
